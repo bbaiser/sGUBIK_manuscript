@@ -1,66 +1,56 @@
+#install pacakges
+
 library(tidyverse)
 library(ape)
-install.packages("DHARMa")
+#install.packages("DHARMa")
 library(DHARMa)
 library(phylolm)
+library(car)
 
 #data
-d_pca = read_csv("Data/d_pca.csv")
+d_pca = read_csv("Data/d_pca.csv") #pca scores for native and non-native urban plant species
 d_pca
-phy = read.tree("Data/phy.tre")
+phy = read.tree("Data/phy.tre")#phylogeny for species in the PCA data set
 plot(phy, type = "fan", show.tip.label = F)
 
 
 
-#All Taxa
+####All Taxa####
 
 #make data frame
 d_pca = as.data.frame(d_pca)
 row.names(d_pca) = d_pca$tip
 
-#do we need to include Phylogeny? yes
+#PC1
+
+#lm
 lm1<-lm(PC1 ~ provenance, data = d_pca)
 summary(lm1)
-plot(lm1)
+#plot(lm1)
 
+#phylm
 phym1 = phylolm(PC1 ~ provenance, data = d_pca, phy)
 summary(phym1)
-
-lm1<-lm(PC1 ~ provenance, data = d_pca)
 
 #compare models, yes we need the phylolm
 AIC(lm1)
 AIC(phym1)
 
 
-
 # Extract residuals
-
-
 predicted_values <- predict(phym1, newdata = d_pca)
 print(predicted_values)
-
 residuals <- residuals(phym1)
 
 # Plot residuals
 plot(predicted_values, residuals, main = "Residuals of phylolm Model", xlab = "Index", ylab = "Residuals")
 abline(h = 0, col = "red")
 
-
-
 qqnorm(residuals, main = "QQ Plot of Residuals for phylolm Model")
 qqline(residuals, col = "red")
 
 
-
-phym2 = phylolm(PC2 ~ provenance, data = d_pca, phy)
-summary(phym2) # still significantly different after considering phylogenetic relationship
-
-lm2 = lm(PC2 ~ provenance, data = d_pca)
-summary(lm2)
-
-AIC(phym2)
-AIC(lm2)
+#models with other predictors
 
 plot(d_pca$ave_tmean, d_pca$PC1)
 plot(d_pca$ave_precip, d_pca$PC1)
@@ -72,53 +62,115 @@ d_pca$ave_tmean = scale(d_pca$ave_tmean)[,1]
 d_pca$ave_precip = scale(d_pca$ave_precip)[,1]
 
 
-#PC1
-m3a = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca, phy) # no interaction
-summary(m3)
+#PC1 models with other predictors
+phym3a = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca, phy) # no polynomial
+summary(phym3a)
 
-phym3b = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca, phy) # no interaction
+lm3a = lm(PC1 ~ ave_tmean*provenance + ave_precip*provenance , data = d_pca) # lm no polynomial
+summary(lm3a)
+
+phym3b = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca, phy) # polynomial and interaction
 summary(phym3b)
-plot(m3b)
 
-lm3b = lm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca) # no interaction
-summary(lm3b)
-plot(m3b)
+phym3c = phylolm(PC1 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = d_pca, phy) # polynomial and no interaction
+summary(phym3c) 
 
-AIC(phym3b)
-AIC(lm3b)
-simulationOutput <- simulateResiduals(fittedModel = phym3b, plot = F)
+#this is the top model via AIC below
+phym3d = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = d_pca, phy) # interaction+ polynomial for only precip (based on plot)
+summary(phym3d)
 
+# Calculate AIC for each model
+aic3a <- AIC(phym3a)
+aic3b <- AIC(phym3b)
+aic3c <- AIC(phym3c)
+aic3d <- AIC(phym3d)#lowes AIC
+aic3e <- AIC(lm3a)
+
+# Compare AIC values
+aic_values <- data.frame(
+  Model = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5"),
+  AIC = c(aic3a, aic3b, aic3c,aic3d,aic3e)
+)
+
+
+# Order by AIC
+aic_values <- aic_values[order(aic_values$AIC), ]
+
+# Calculate delta AIC
+aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
+aic_values
+
+#check residuals with dharma
+simulationOutput <- simulateResiduals(fittedModel = phym3d, plot = F)
 plot(simulationOutput)
-
 testDispersion(simulationOutput)
 
+
+#plot residuals by hand
 residuals <- residuals(phym3b)
-
-
-predicted<-predict.lm(phym3b)
+predicted<-predict.lm(phym3b)#not working because phylolm
 
 # Plot residuals
 plot(residuals, main = "Residuals of phylolm Model", xlab = "Index", ylab = "Residuals")
 abline(h = 0, col = "red")
 
+qqnorm(residuals, main = "QQ Plot of Residuals for phylolm Model")
+qqline(residuals, col = "red")
 
+
+
+#PC2
+
+#lm
+lm2<-lm(PC2 ~ provenance, data = d_pca)
+summary(lm2)
+#plot(lm2)
+
+#phylm
+phym2 = phylolm(PC2 ~ provenance, data = d_pca, phy)
+summary(phym2)
+
+#compare models 
+AIC(lm2)# lm us waaaaaay better(but only significant because of sample size)
+AIC(phym2)
+
+
+# Extract residuals
+predicted_values <- predict(lm2, newdata = d_pca)
+print(predicted_values)
+residuals <- residuals(lm2)
+
+# Plot residuals
+plot(predicted_values, residuals, main = "Residuals of phylolm Model", xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
 
 qqnorm(residuals, main = "QQ Plot of Residuals for phylolm Model")
 qqline(residuals, col = "red")
 
 
-m3d = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = d_pca, phy) # no interaction
-summary(m3d)
+#models with predictors (only using LM here becasue it is such a better fit re: aic)
+lm3a = lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca)# no polynomial
+summary(lm3a)
 
-m3c = phylolm(PC1 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = d_pca, phy) # no interaction
-summary(m3c) # still significantly different after considering phylogenetic relationship and temp and precip
+#best fit model based on AIC below
+lm3b = lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca) # polynomial and interaction
+summary(lm3b)
+
+lm3c = lm(PC2 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = d_pca) # polynomial and no interaction
+summary(lm3c) 
+
+#this is the top model via AIC below
+lm3d = lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = d_pca) # interaction+ polynomial for only precip (based on plot)
+summary(lm3d)
+
 
 
 # Calculate AIC for each model
-aic3a <- AIC(m3a)
-aic3b <- AIC(m3b)#lowes AIC
-aic3c <- AIC(m3c)
-aic3d <- AIC(m3d)
+aic3a <- AIC(lm3a)
+aic3b <- AIC(lm3b)
+aic3c <- AIC(lm3c)
+aic3d <- AIC(lm3d)#lowes AIC
+#aic3e <- AIC(lm3a)
 
 # Compare AIC values
 aic_values <- data.frame(
@@ -127,41 +179,76 @@ aic_values <- data.frame(
 )
 
 
-#PC2
-m4a = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca, phy) # no interaction
-summary(m4a)
+# Order by AIC
+aic_values <- aic_values[order(aic_values$AIC), ]
 
-phym4b = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca, phy) # no interaction
-summary(m4b)
+# Calculate delta AIC
+aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
+aic_values
 
-lm4b = lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca) # no interaction
-summary(m4b)
-
-#lm is better for second
-AIC(phym4b)
-AIC(lm4b)
-
-
-simulationOutput <- simulateResiduals(fittedModel = m4b, plot = F)
-
+#check residuals with dharma
+simulationOutput <- simulateResiduals(fittedModel = phym3d, plot = F)
 plot(simulationOutput)
-
 testDispersion(simulationOutput)
 
-m4c = phylolm(PC2 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = d_pca, phy) # no interaction
-summary(m4c) # still significantly different after considering phylogenetic relationship and temp and precip
+
+#plot residuals by hand
+residuals <- residuals(lm3b)
+predicted<-predict.lm(lm3b)
+
+# Plot residuals
+plot(residuals, main = "Residuals of phylolm Model", xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+qqnorm(residuals, main = "QQ Plot of Residuals for phylolm Model")
+qqline(residuals, col = "red")
 
 
-# Calculate AIC for each model
-aic4a <- AIC(m4a)
-aic4b <- AIC(m4b)#lowes AIC
-aic4c <- AIC(m4c)
+##plot interactions
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3"),
-  AIC = c(aic4a, aic4b, aic4c)
+# Create prediction grid for both interactions
+grid_tmean <- expand.grid(
+  ave_tmean = seq(min(d_pca$ave_tmean), max(d_pca$ave_tmean), length.out = 100),
+  ave_precip = mean(d_pca$ave_precip),
+  provenance = levels(factor(d_pca$provenance))
 )
+
+
+
+
+grid_tmean$interaction <- "ave_tmean × provenance"
+grid_tmean$I.ave_tmean.2 <- grid_tmean$ave_tmean^2
+grid_tmean$I.ave_precip.2 <- grid_tmean$ave_precip^2
+
+grid_precip <- expand.grid(
+  ave_tmean = mean(d_pca$ave_tmean),
+  ave_precip = seq(min(d_pca$ave_precip), max(d_pca$ave_precip), length.out = 100),
+  provenance = levels(factor(d_pca$provenance))
+)
+
+grid_precip$interaction <- "ave_precip × provenance"
+grid_precip$I.ave_tmean.2 <- grid_precip$ave_tmean^2
+grid_precip$I.ave_precip.2 <- grid_precip$ave_precip^2
+
+# Combine both grids
+new_data <- bind_rows(grid_tmean, grid_precip)
+
+# Predict from the model
+model <- lm(PC2 ~ ave_tmean * provenance + ave_precip * provenance + 
+              I(ave_tmean^2) + I(ave_precip^2), data = d_pca)
+
+new_data$PC2_pred <- predict(model, newdata = new_data)
+
+# Plot both interactions
+ggplot(new_data, aes(x = ifelse(interaction == "ave_tmean × provenance", ave_tmean, ave_precip),
+                     y = PC2_pred, color = provenance)) +
+  geom_line(size = 1.2) +
+  facet_wrap(~interaction, scales = "free_x") +
+  labs(x = "Predictor", y = "Predicted PC2", color = "Provenance",
+       title = "Interaction Effects on PC2") +
+  theme_minimal()
+
+
 
 
 ####herb####
@@ -171,6 +258,162 @@ herb<-d_pca%>%
 
 herb = as.data.frame(herb)
 row.names(herb) = herb$tip
+
+
+
+#lm
+lm1<-lm(PC1 ~ provenance, data = herb)
+summary(lm1)
+#plot(lm2)
+
+#phylm
+phym1 = phylolm(PC1 ~ provenance, data = herb, phy)
+summary(phym1)
+
+#compare models 
+AIC(lm1)# lm us waaaaaay better(but only significant because of sample size)
+AIC(phym1)
+
+
+# Extract residuals
+predicted_values <- predict(lm1, newdata = herb)
+print(predicted_values)
+residuals <- residuals(lm1)
+
+# Plot residuals
+plot(predicted_values, residuals, main = "Residuals of phylolm Model", xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+qqnorm(residuals, main = "QQ Plot of Residuals for phylolm Model")
+qqline(residuals, col = "red")
+
+#env variables
+plot(herb$ave_tmean, herb$PC1)
+plot(herb$ave_precip, herb$PC1)
+plot(herb$ave_tmean, herb$PC2)
+plot(herb$ave_precip, herb$PC2)
+
+#models with predictors (only using LM here becasue it is such a better fit re: aic)
+lm3a = lm(PC1 ~ ave_tmean*provenance + ave_precip*provenance, data = herb)# no polynomial
+summary(lm3a)
+
+#best fit model based on AIC below
+lm3b = lm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = herb) # polynomial and interaction
+summary(lm3b)
+
+lm3c = lm(PC1 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = herb) # polynomial and no interaction
+summary(lm3c) 
+
+#this is the top model via AIC below
+lm3d = lm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data =herb) # interaction+ polynomial for only precip (based on plot)
+summary(lm3d)
+
+
+
+# Calculate AIC for each model
+aic3a <- AIC(lm3a)
+aic3b <- AIC(lm3b)#lowes AIC
+aic3c <- AIC(lm3c)
+aic3d <- AIC(lm3d)
+#aic3e <- AIC(lm3a)
+
+# Compare AIC values
+aic_values <- data.frame(
+  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
+  AIC = c(aic3a, aic3b, aic3c,aic3d)
+)
+
+
+# Order by AIC
+aic_values <- aic_values[order(aic_values$AIC), ]
+
+# Calculate delta AIC
+aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
+aic_values
+
+#check residuals with dharma
+simulationOutput <- simulateResiduals(fittedModel = phym3d, plot = F)
+plot(simulationOutput)
+testDispersion(simulationOutput)
+
+
+#plot residuals by hand
+residuals <- residuals(lm3b)
+predicted<-predict.lm(lm3b,newdata = herb)
+
+# Plot residuals
+plot(predicted,residuals, main = "Residuals of lm Model", xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+qqnorm(residuals, main = "QQ Plot of Residuals for lm Model")
+qqline(residuals, col = "red")
+
+
+##plot interactions
+
+# Create prediction grid for both interactions
+grid_tmean <- expand.grid(
+  ave_tmean = seq(min(herb$ave_tmean), max(herb$ave_tmean), length.out = 100),
+  ave_precip = mean(herb$ave_precip),
+  provenance = levels(factor(herb$provenance))
+)
+
+
+
+
+grid_tmean$interaction <- "ave_tmean × provenance"
+grid_tmean$I.ave_tmean.2 <- grid_tmean$ave_tmean^2
+grid_tmean$I.ave_precip.2 <- grid_tmean$ave_precip^2
+
+grid_precip <- expand.grid(
+  ave_tmean = mean(herb$ave_tmean),
+  ave_precip = seq(min(herb$ave_precip), max(herb$ave_precip), length.out = 100),
+  provenance = levels(factor(herb$provenance))
+)
+
+grid_precip$interaction <- "ave_precip × provenance"
+grid_precip$I.ave_tmean.2 <- grid_precip$ave_tmean^2
+grid_precip$I.ave_precip.2 <- grid_precip$ave_precip^2
+
+# Combine both grids
+new_data <- bind_rows(grid_tmean, grid_precip)
+
+# Predict from the model
+model <- lm(PC1 ~ ave_tmean * provenance + ave_precip * provenance + 
+              I(ave_tmean^2) + I(ave_precip^2), data = herb)
+
+new_data$PC1_pred <- predict(model, newdata = new_data)
+
+# Plot both interactions
+ggplot(new_data, aes(x = ifelse(interaction == "ave_tmean × provenance", ave_tmean, ave_precip),
+                     y = PC1_pred, color = provenance)) +
+  geom_line(size = 1.2) +
+  facet_wrap(~interaction, scales = "free_x") +
+  labs(x = "Predictor", y = "Predicted PC1", color = "Provenance",
+       title = "Interaction Effects on PC1") +
+  coord_cartesian(ylim = c(-2, 2)) + 
+  theme_minimal()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 phymh1 = phylolm(PC1 ~ provenance, data = herb, phy)
 summary(phymh1) # still significantly different after considering phylogenetic relationship
@@ -237,7 +480,7 @@ aic_values <- data.frame(
 
 
 #PC2
-m4a = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca, phy) # no interaction
+m4a = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = herb, phy) # no interaction
 summary(m4a)
 
 m4b = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca, phy) # no interaction
