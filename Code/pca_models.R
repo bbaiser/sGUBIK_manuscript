@@ -10,7 +10,8 @@ library(phytools)
 
 #data
 d_pca = read_csv("Data/d_pca.csv") #pca scores for native and non-native urban plant species
-d_pca
+
+
 phy = read.tree("Data/phy.tre")#phylogeny for species in the PCA data set
 plot(phy, type = "fan", show.tip.label = F)
 
@@ -71,7 +72,6 @@ d_pca$ave_precip = scale(d_pca$ave_precip)[,1]
 
 
 #all subsets (almost)
-results <- data.frame(model_name=character(), formula=character(), R2=numeric(), AIC=numeric(), deltaAIC=numeric(), stringsAsFactors=FALSE)
 
 model_list <- list()
 
@@ -150,47 +150,67 @@ model_list[['model_24']] <- model_24
 model_25 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
 model_list[['model_25']] <- model_25
 
-aic_values <- sapply(model_list, AIC)
-r2_values <- sapply(model_list, function(m) summary(m)$r.squared)
-delta_aic <- aic_values - min(aic_values)
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
+)
 
-results <- data.frame(
-          model_name = names(model_list),
-          formula = sapply(model_list, function(m) as.character(formula(m))),
-          R2 = r2_values,
-          AIC = aic_values,
-          deltaAIC = delta_aic
-           )
-
-results <- results[order(results$deltaAIC), ]
-print(results)
-
-# get results from top 5 models
-top_models <- head(results$model_name, 5)
-
-# Print summaries for top 5 models
-for (model_name in top_models) {
-  cat("\n--- Summary of", model_name, "---\n")
-  print(summary(get(model_name)))
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
 }
+
+# Calculate delta AIC
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
+
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
+
+
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
 
 #Variance inflation
 
-vif(lm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = d_pca), type="predictor")
+vif(lm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2)+I(ave_tmean^2), data = d_pca), type="predictor")
 
 #check residuals with dharma
-simulationOutput <- simulateResiduals(fittedModel = model_17, plot = F)
+simulationOutput <- simulateResiduals(fittedModel = model_25, plot = F)
 plot(simulationOutput)
 testDispersion(simulationOutput)
 
 #residuals for reg qqplot
-qqnorm(residuals(model_17), main = "Q-Q Plot: phylolm")
-qqline(residuals(model_17), col = "red")
+qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
+qqline(residuals(model_25), col = "red")
 
 #PLOTS FOR PC1
 # Get means for centering
-mean_tmean <- mean(d_pca$ave_tmean, na.rm = TRUE)
-mean_precip <- mean(d_pca$ave_precip, na.rm = TRUE)
+mean_tmean <- round(mean(d_pca$ave_tmean, na.rm = TRUE),2)
+mean_precip <- round(mean(d_pca$ave_precip, na.rm = TRUE),2)
 
 # 1. Effect of ave_precip (with quadratic term), by provenance
 precip_seq <- seq(min(d_pca$ave_precip), max(d_pca$ave_precip), length.out = 100)
@@ -200,10 +220,11 @@ new_precip <- expand.grid(
 ) %>%
   mutate(
     ave_tmean = mean_tmean,
-    `I(ave_precip^2)` = ave_precip^2
+    `I(ave_precip^2)` = ave_precip^2,
+    `I(ave_tmean^2)` = ave_tmean^2
   )
 
-new_precip$PC1_pred <- predict(model_22, newdata = new_precip)
+new_precip$PC1_pred <- predict(model_25, newdata = new_precip)
 
 # Define custom colors
 custom_colors <- c("native" = "blue", "non_native" = "orange")
@@ -232,10 +253,11 @@ new_tmean <- expand.grid(
 ) %>%
   mutate(
     ave_precip = mean_precip,
-    `I(ave_precip^2)` = mean_precip^2
+    `I(ave_precip^2)` = ave_precip^2,
+    `I(ave_tmean^2)` = ave_tmean^2
   )
 
-new_tmean$PC1_pred <- predict(model_17, newdata = new_tmean)
+new_tmean$PC1_pred <- predict(model_25, newdata = new_tmean)
 
 # 2. Plot for ave_tmean
 ggplot(new_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
@@ -255,10 +277,11 @@ box_data <- data.frame(
   ave_precip = mean(d_pca$ave_precip, na.rm = TRUE),
   provenance = c("native", "non_native")
 ) %>%
-  mutate(`I(ave_precip^2)` = ave_precip^2)
+  mutate(`I(ave_precip^2)` = ave_precip^2,
+         `I(ave_tmean^2)` = ave_tmean^2)
 
 # Predict PC1
-box_data$PC1_pred <- predict(model_17, newdata = box_data)
+box_data$PC1_pred <- predict(model_25, newdata = box_data)
 
 
 # Duplicate rows to simulate a distribution (optional)
@@ -293,7 +316,7 @@ geom_boxplot(alpha = 0.7) +
 
 
 
-####PC2####
+####PC2- All taxa####
 
 #lm
 lm2<-lm(PC2 ~ provenance, data = d_pca)
@@ -341,47 +364,129 @@ qqline(residuals, col = "red")
 
 
 #PC2 models with other predictors
-phym3a = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = d_pca, phy) # no polynomial
-summary(phym3a)
 
-lm3a = phylolm(PC2 ~ ave_tmean+ provenance + ave_precip+I(ave_precip^2), data = d_pca, phy) # no polynomial # lm no polynomial
-summary(lm3a)
+#all subsets (almost)
 
-#best model per aic below
-phym3b = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = d_pca, phy) # polynomial and interaction
-summary(phym3b)
+model_list <- list()
 
-phym3c = phylolm(PC2 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = d_pca, phy) # polynomial and no interaction
-summary(phym3c) 
+model_1 <- phylolm(PC2 ~ provenance, data = d_pca, phy = phy)
+model_list[['model_1']] <- model_1
 
-#this is the top model via AIC below
-phym3d = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = d_pca, phy) # interaction+ polynomial for only precip (based on plot)
-summary(phym3d)
+model_2 <- phylolm(PC2 ~ provenance + ave_tmean, data = d_pca, phy = phy)
+model_list[['model_2']] <- model_2
 
-#check vif best model
-vif(lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = d_pca), type='predictor')
+model_3 <- phylolm(PC2 ~ provenance + ave_precip, data = d_pca, phy = phy)
+model_list[['model_3']] <- model_3
 
-# Calculate AIC for each model
-aic3a <- AIC(phym3a)
-aic3b <- AIC(phym3b)#best mode per aic
-aic3c <- AIC(phym3c)
-aic3d <- AIC(phym3d)#lowes AIC
-aic3e <- AIC(lm3a)
+model_4 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip, data = d_pca, phy = phy)
+model_list[['model_4']] <- model_4
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5"),
-  AIC = c(aic3a, aic3b, aic3c,aic3d,aic3e)
+model_5 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance, data = d_pca, phy = phy)
+model_list[['model_5']] <- model_5
+
+model_6 <- phylolm(PC2 ~ provenance + ave_tmean + I(ave_tmean^2), data = d_pca, phy = phy)
+model_list[['model_6']] <- model_6
+
+model_7 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance, data = d_pca, phy = phy)
+model_list[['model_7']] <- model_7
+
+model_8 <- phylolm(PC2 ~ provenance + ave_precip + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_8']] <- model_8
+
+model_9 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance, data = d_pca, phy = phy)
+model_list[['model_9']] <- model_9
+
+model_10 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance, data = d_pca, phy = phy)
+model_list[['model_10']] <- model_10
+
+model_11 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2), data = d_pca, phy = phy)
+model_list[['model_11']] <- model_11
+
+model_12 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_12']] <- model_12
+
+model_13 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2), data = d_pca, phy = phy)
+model_list[['model_13']] <- model_13
+
+model_14 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_14']] <- model_14
+
+model_15 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance, data = d_pca, phy = phy)
+model_list[['model_15']] <- model_15
+
+model_16 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2), data = d_pca, phy = phy)
+model_list[['model_16']] <- model_16
+
+model_17 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_17']] <- model_17
+
+model_18 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_18']] <- model_18
+
+model_19 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_19']] <- model_19
+
+model_20 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_20']] <- model_20
+
+model_21 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2), data = d_pca, phy = phy)
+model_list[['model_21']] <- model_21
+
+model_22 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_22']] <- model_22
+
+model_23 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_23']] <- model_23
+
+model_24 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_24']] <- model_24
+
+model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
+model_list[['model_25']] <- model_25
+
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
 )
 
-
-# Order by AIC
-aic_values <- aic_values[order(aic_values$AIC), ]
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
+}
 
 # Calculate delta AIC
-aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
-aic_values
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
 
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
+
+
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
 #check residuals with dharma
 simulationOutput <- simulateResiduals(fittedModel = phym3b, plot = F)
 plot(simulationOutput)
@@ -403,8 +508,8 @@ qqline(residuals, col = "red")
 ##plot interactions
 
 # Means for holding other variables constant
-mean_tmean <- mean(d_pca$ave_tmean, na.rm = TRUE)
-mean_precip <- mean(d_pca$ave_precip, na.rm = TRUE)
+mean_tmean <- round(mean(d_pca$ave_tmean, na.rm = TRUE),2)
+mean_precip <- round(mean(d_pca$ave_precip, na.rm = TRUE),2)
 
 # Custom colors
 custom_colors <- c("native" = "blue", "non_native" = "orange")
@@ -421,7 +526,7 @@ new_tmean <- expand.grid(
     `I(ave_precip^2)` = mean_precip^2
   )
 
-new_tmean$PC2_pred <- predict(phym3b, newdata = new_tmean)
+new_tmean$PC2_pred <- predict(model_25, newdata = new_tmean)
 
 ggplot(new_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -431,6 +536,7 @@ ggplot(new_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
     x = "Average Temperature",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-3, 3)) +
   theme_minimal()
 
 # 2. Effect of ave_precip (with quadratic term)
@@ -445,7 +551,7 @@ new_precip <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-new_precip$PC2_pred <- predict(phym3b, newdata = new_precip)
+new_precip$PC2_pred <- predict(model_25, newdata = new_precip)
 
 ggplot(new_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -455,6 +561,7 @@ ggplot(new_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
     x = "Average Precipitation",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-3, 3)) +
   theme_minimal()
 
 
@@ -472,8 +579,8 @@ box_data <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-#  Predict PC1 using your phylolm model
-box_data$PC2_pred <- predict(phym3b, newdata = box_data)
+#  Predict PC2 using your phylolm model
+box_data$PC2_pred <- predict(model_25, newdata = box_data)
 
 # (optional): Expand to simulate distribution for boxplot
 set.seed(123)
@@ -489,6 +596,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC2_pred, fill = provenance)) 
     x = "Provenance",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-1, 1)) +
   theme_minimal()
 ####PC1-herb####
 
@@ -536,49 +644,131 @@ plot(herb$ave_tmean, herb$PC2)
 plot(herb$ave_precip, herb$PC2)
 
 
-
 #models with predictors 
-phylm3a = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance, data = herb,phy)# no polynomial
-summary(phylm3a)
+model_list <- list()
 
-#best fit model based on AIC below
-phylm3b = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = herb,phy) # polynomial and interaction
-summary(phylm3b)
+model_1 <- phylolm(PC1 ~ provenance, data = herb, phy = phy)
+model_list[['model_1']] <- model_1
 
-phylm3c = phylolm(PC1 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = herb,phy) # polynomial and no interaction
-summary(phylm3c) 
+model_2 <- phylolm(PC1 ~ provenance + ave_tmean, data = herb, phy = phy)
+model_list[['model_2']] <- model_2
 
+model_3 <- phylolm(PC1 ~ provenance + ave_precip, data = herb, phy = phy)
+model_list[['model_3']] <- model_3
 
-phylm3d = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data =herb,phy) # interaction+ polynomial for only precip (based on plot)
-summary(phylm3d)
+model_4 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip, data = herb, phy = phy)
+model_list[['model_4']] <- model_4
 
+model_5 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance, data = herb, phy = phy)
+model_list[['model_5']] <- model_5
 
+model_6 <- phylolm(PC1 ~ provenance + ave_tmean + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_6']] <- model_6
 
-# Calculate AIC for each model
-aic3a <- AIC(phylm3a)
-aic3b <- AIC(phylm3b)#lowes AIC
-aic3c <- AIC(phylm3c)
-aic3d <- AIC(phylm3d)
-#aic3e <- AIC(lm3a)
+model_7 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_7']] <- model_7
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
-  AIC = c(aic3a, aic3b, aic3c,aic3d)
+model_8 <- phylolm(PC1 ~ provenance + ave_precip + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_8']] <- model_8
+
+model_9 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance, data = herb, phy = phy)
+model_list[['model_9']] <- model_9
+
+model_10 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_10']] <- model_10
+
+model_11 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_11']] <- model_11
+
+model_12 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_12']] <- model_12
+
+model_13 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_13']] <- model_13
+
+model_14 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_14']] <- model_14
+
+model_15 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_15']] <- model_15
+
+model_16 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_16']] <- model_16
+
+model_17 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_17']] <- model_17
+
+model_18 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_18']] <- model_18
+
+model_19 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_19']] <- model_19
+
+model_20 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_20']] <- model_20
+
+model_21 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_21']] <- model_21
+
+model_22 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_22']] <- model_22
+
+model_23 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_23']] <- model_23
+
+model_24 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_24']] <- model_24
+
+model_25 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_25']] <- model_25
+
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
 )
 
-
-# Order by AIC
-aic_values <- aic_values[order(aic_values$AIC), ]
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
+}
 
 # Calculate delta AIC
-aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
-aic_values
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
 
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
+
+
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
 
 # Q-Q plot for phylolm model
-qqnorm(residuals(phylm3b), main = "Q-Q Plot: phylolm")
-qqline(residuals(phylm3b), col = "red")
+qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
+qqline(residuals(model_25), col = "red")
 
 
 #plot residuals by hand
@@ -595,8 +785,8 @@ qqline(residuals, col = "red")
 
 ##plot interactions
 # Set up means
-mean_tmean <- mean(herb$ave_tmean, na.rm = TRUE)
-mean_precip <- mean(herb$ave_precip, na.rm = TRUE)
+mean_tmean <- round(mean(herb$ave_tmean, na.rm = TRUE),2)
+mean_precip <- round(mean(herb$ave_precip, na.rm = TRUE),2)
 custom_colors <- c("native" = "blue", "non_native" = "orange")
 
 # 1. Prediction over ave_tmean (with squared term)
@@ -611,7 +801,7 @@ pred_tmean <- expand.grid(
     `I(ave_precip^2)` = mean_precip^2
   )
 
-pred_tmean$PC1_pred <- predict(phylm3b, newdata = pred_tmean)
+pred_tmean$PC1_pred <- predict(model_25, newdata = pred_tmean)
 
 ggplot(pred_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -621,6 +811,7 @@ ggplot(pred_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
     x = "Average Temperature",
     y = "Predicted PC1"
   ) +
+  coord_cartesian(ylim = c(-4, 4)) +
   theme_minimal()
 
 # 2. Prediction over ave_precip (with squared term + interaction)
@@ -635,7 +826,7 @@ pred_precip <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-pred_precip$PC1_pred <- predict(phylm3b, newdata = pred_precip)
+pred_precip$PC1_pred <- predict(model_25, newdata = pred_precip)
 
 ggplot(pred_precip, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -645,6 +836,7 @@ ggplot(pred_precip, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
     x = "Average Precipitation",
     y = "Predicted PC1"
   ) +
+  coord_cartesian(ylim = c(-3, 3)) +
   theme_minimal()
 
 
@@ -660,7 +852,7 @@ box_data <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-box_data$PC1_pred <- predict(phylm3b, newdata = box_data)
+box_data$PC1_pred <- predict(model_25, newdata = box_data)
 
 # Optional: simulate variability for boxplot
 set.seed(123)
@@ -675,6 +867,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC1_pred, fill = provenance)) 
     x = "Provenance",
     y = "Predicted PC1"
   ) +
+  coord_cartesian(ylim = c(-3, 1)) +
   theme_minimal()
 
 
@@ -703,47 +896,132 @@ plot(herb$ave_precip, herb$PC2)
 
 
 
+
 #models with predictors 
-phylm3a = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = herb,phy)# no polynomial
-summary(phylm3a)
+model_list <- list()
 
-#best fit model based on AIC below
-phylm3b = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = herb,phy) # polynomial and interaction
-summary(phylm3b)
+model_1 <- phylolm(PC2 ~ provenance, data = herb, phy = phy)
+model_list[['model_1']] <- model_1
 
-phylm3c = phylolm(PC2 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = herb,phy) # polynomial and no interaction
-summary(phylm3c) 
+model_2 <- phylolm(PC2 ~ provenance + ave_tmean, data = herb, phy = phy)
+model_list[['model_2']] <- model_2
 
+model_3 <- phylolm(PC2 ~ provenance + ave_precip, data = herb, phy = phy)
+model_list[['model_3']] <- model_3
 
-phylm3d = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data =herb,phy) # interaction+ polynomial for only precip (based on plot)
-summary(phylm3d)
+model_4 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip, data = herb, phy = phy)
+model_list[['model_4']] <- model_4
 
+model_5 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance, data = herb, phy = phy)
+model_list[['model_5']] <- model_5
 
-# Calculate AIC for each model
-aic3a <- AIC(phylm3a)
-aic3b <- AIC(phylm3b)#lowes AIC
-aic3c <- AIC(phylm3c)
-aic3d <- AIC(phylm3d)
-#aic3e <- AIC(lm3a)
+model_6 <- phylolm(PC2 ~ provenance + ave_tmean + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_6']] <- model_6
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
-  AIC = c(aic3a, aic3b, aic3c,aic3d)
+model_7 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_7']] <- model_7
+
+model_8 <- phylolm(PC2 ~ provenance + ave_precip + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_8']] <- model_8
+
+model_9 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance, data = herb, phy = phy)
+model_list[['model_9']] <- model_9
+
+model_10 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_10']] <- model_10
+
+model_11 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_11']] <- model_11
+
+model_12 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_12']] <- model_12
+
+model_13 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_13']] <- model_13
+
+model_14 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_14']] <- model_14
+
+model_15 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance, data = herb, phy = phy)
+model_list[['model_15']] <- model_15
+
+model_16 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_16']] <- model_16
+
+model_17 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_17']] <- model_17
+
+model_18 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_18']] <- model_18
+
+model_19 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_19']] <- model_19
+
+model_20 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_20']] <- model_20
+
+model_21 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2), data = herb, phy = phy)
+model_list[['model_21']] <- model_21
+
+model_22 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_22']] <- model_22
+
+model_23 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_23']] <- model_23
+
+model_24 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_24']] <- model_24
+
+model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_list[['model_25']] <- model_25
+
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
 )
 
-
-# Order by AIC
-aic_values <- aic_values[order(aic_values$AIC), ]
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
+}
 
 # Calculate delta AIC
-aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
-aic_values
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
+
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
 
 
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
+vif(lm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb),type= 'predictor')
 # Q-Q plot for phylolm model
-qqnorm(residuals(phylm3b), main = "Q-Q Plot: phylolm")
-qqline(residuals(phylm3b), col = "red")
+qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
+qqline(residuals(model_25), col = "red")
 
 
 #plot residuals by hand
@@ -759,13 +1037,12 @@ qqline(residuals, col = "red")
 
 
 ##plot interactions
-
 # Set up means
-mean_tmean <- mean(herb$ave_tmean, na.rm = TRUE)
-mean_precip <- mean(herb$ave_precip, na.rm = TRUE)
+mean_tmean <- round(mean(herb$ave_tmean, na.rm = TRUE),2)
+mean_precip <- round(mean(herb$ave_precip, na.rm = TRUE),2)
 custom_colors <- c("native" = "blue", "non_native" = "orange")
 
-# 1. Prediction over ave_tmean (with squared term + interaction)
+# 1. Prediction over ave_tmean (with squared term)
 tmean_seq <- seq(min(herb$ave_tmean), max(herb$ave_tmean), length.out = 100)
 pred_tmean <- expand.grid(
   ave_tmean = tmean_seq,
@@ -777,16 +1054,17 @@ pred_tmean <- expand.grid(
     `I(ave_precip^2)` = mean_precip^2
   )
 
-pred_tmean$PC2_pred <- predict(phylm3b, newdata = pred_tmean)
+pred_tmean$PC2_pred <- predict(model_25, newdata = pred_tmean)
 
 ggplot(pred_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
   scale_color_manual(values = custom_colors) +
   labs(
-    title = "Predicted PC2 vs Temperature",
+    title = "Predicted PC2 vs Temperature - Herbs",
     x = "Average Temperature",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-4, 4)) +
   theme_minimal()
 
 # 2. Prediction over ave_precip (with squared term + interaction)
@@ -801,17 +1079,20 @@ pred_precip <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-pred_precip$PC2_pred <- predict(phylm3b, newdata = pred_precip)
+pred_precip$PC2_pred <- predict(model_25, newdata = pred_precip)
 
 ggplot(pred_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
   scale_color_manual(values = custom_colors) +
   labs(
-    title = "Predicted PC2 vs Precipitation - Herbs",
+    title = "Predicted PC2 vs Precipitation- Herbs",
     x = "Average Precipitation",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-8, 4)) +
   theme_minimal()
+
+
 
 # 3. Boxplot of predicted PC2 by provenance
 box_data <- expand.grid(
@@ -824,7 +1105,7 @@ box_data <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-box_data$PC2_pred <- predict(phylm3b, newdata = box_data)
+box_data$PC2_pred <- predict(model_25, newdata = box_data)
 
 # Optional: simulate variability for boxplot
 set.seed(123)
@@ -839,16 +1120,19 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC2_pred, fill = provenance)) 
     x = "Provenance",
     y = "Predicted PC2"
   ) +
+  coord_cartesian(ylim = c(-1, 1)) +
   theme_minimal()
+
 
 ####PC1-woody####
 
 
 woody<-d_pca%>%
-  filter(growth_form=="woody")
+       filter(growth_form=="woody")
 
 woody = as.data.frame(woody)
 row.names(woody) = woody$tip
+
 phywm1 = phylolm(PC1 ~ provenance, data = woody, phy)
 summary(phywm1) # still significantly different after considering phylogenetic relationship
 
@@ -863,62 +1147,140 @@ plot(woody$ave_tmean, woody$PC2)
 plot(woody$ave_precip, woody$PC2)
 
 
-# with other variables
-mha = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance, data = woody, phy) # no interaction
-summary(mha)
+#models with predictors 
+model_list <- list()
 
-mhb = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = woody, phy) # no interaction
-summary(mhb)
+model_1 <- phylolm(PC1 ~ provenance, data = woody, phy = phy)
+model_list[['model_1']] <- model_1
 
-mhd = phylolm(PC1 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = woody, phy) # no interaction
-summary(mhd)
+model_2 <- phylolm(PC1 ~ provenance + ave_tmean, data = woody, phy = phy)
+model_list[['model_2']] <- model_2
 
-mhc = phylolm(PC1 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = woody, phy) # no interaction
-summary(mhc) # still significantly different after considering phylogenetic relationship and temp and precip
+model_3 <- phylolm(PC1 ~ provenance + ave_precip, data = woody, phy = phy)
+model_list[['model_3']] <- model_3
 
+model_4 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip, data = woody, phy = phy)
+model_list[['model_4']] <- model_4
 
-# Calculate AIC for each model
-aicha <- AIC(mha)
-aichb <- AIC(mhb)#lowes AIC
-aichc <- AIC(mhc)
-aichd <- AIC(mhd)
+model_5 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance, data = woody, phy = phy)
+model_list[['model_5']] <- model_5
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
-  AIC = c(aicha, aichb, aichc,aichd)
+model_6 <- phylolm(PC1 ~ provenance + ave_tmean + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_6']] <- model_6
+
+model_7 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_7']] <- model_7
+
+model_8 <- phylolm(PC1 ~ provenance + ave_precip + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_8']] <- model_8
+
+model_9 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance, data = woody, phy = phy)
+model_list[['model_9']] <- model_9
+
+model_10 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_10']] <- model_10
+
+model_11 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_11']] <- model_11
+
+model_12 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_12']] <- model_12
+
+model_13 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_13']] <- model_13
+
+model_14 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_14']] <- model_14
+
+model_15 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_15']] <- model_15
+
+model_16 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_16']] <- model_16
+
+model_17 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_17']] <- model_17
+
+model_18 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_18']] <- model_18
+
+model_19 <- phylolm(PC1 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_19']] <- model_19
+
+model_20 <- phylolm(PC1 ~ provenance + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_20']] <- model_20
+
+model_21 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_21']] <- model_21
+
+model_22 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_22']] <- model_22
+
+model_23 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_23']] <- model_23
+
+model_24 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_24']] <- model_24
+
+model_25 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_25']] <- model_25
+
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
 )
 
-# Order by AIC
-aic_values <- aic_values[order(aic_values$AIC), ]
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
+}
 
 # Calculate delta AIC
-aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
-aic_values
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
+
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
+
+
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
 
 
 # Q-Q plot for phylolm model
-qqnorm(residuals(mhb), main = "Q-Q Plot: phylolm")
-qqline(residuals(mhb), col = "red")
+qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
+qqline(residuals(model_25), col = "red")
 
-
-#plot residuals by hand
-residuals <- residuals(mhb)
-predicted<-predict(mhb,newdata = woody)
-
-# Plot residuals
-plot(predicted,residuals, main = "Residuals of lm Model", xlab = "Index", ylab = "Residuals")
-abline(h = 0, col = "red")
-
-qqnorm(residuals, main = "QQ Plot of Residuals for lm Model")
-qqline(residuals, col = "red")
 
 
 ##plot interactions
 
 # Set up means and colors
-mean_tmean <- mean(woody$ave_tmean, na.rm = TRUE)
-mean_precip <- mean(woody$ave_precip, na.rm = TRUE)
+mean_tmean <- round(mean(woody$ave_tmean, na.rm = TRUE),2)
+mean_precip <-round(mean(woody$ave_precip, na.rm = TRUE),2)
 custom_colors <- c("native" = "blue", "non_native" = "orange")
 
 # 1. Prediction over ave_tmean
@@ -933,7 +1295,7 @@ pred_tmean <- expand.grid(
     `I(ave_precip^2)` = mean_precip^2
   )
 
-pred_tmean$PC1_pred <- predict(mhb, newdata = pred_tmean)
+pred_tmean$PC1_pred <- predict(model_25, newdata = pred_tmean)
 
 ggplot(pred_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -941,10 +1303,11 @@ ggplot(pred_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
   labs(
     title = "Predicted PC1 vs Temperature-Woody",
     x = "Average Temperature",
-    y = "Predicted PC1"
-  ) +
-  ylim(-1, 1) +
+    y = "Predicted PC1") +
+  coord_cartesian(ylim=c(-3,3))+
   theme_minimal()
+
+
 
 # 2. Prediction over ave_precip
 precip_seq <- seq(min(woody$ave_precip, na.rm = TRUE), max(woody$ave_precip, na.rm = TRUE), length.out = 100)
@@ -958,7 +1321,7 @@ pred_precip <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-pred_precip$PC1_pred <- predict(mhb, newdata = pred_precip)
+pred_precip$PC1_pred <- predict(model_25, newdata = pred_precip)
 
 ggplot(pred_precip, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -966,8 +1329,8 @@ ggplot(pred_precip, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
   labs(
     title = "Predicted PC1 vs Precipitation -Woody",
     x = "Average Precipitation",
-    y = "Predicted PC1"
-  ) +
+    y = "Predicted PC1") +
+  coord_cartesian(ylim=c(-3,3))+
   theme_minimal()
 
 # 3. Boxplot of predicted PC1 by provenance
@@ -985,7 +1348,7 @@ box_data <- expand.grid(
   )
 
 # Predict PC1
-box_data$PC1_pred <- predict(mhb, newdata = box_data)
+box_data$PC1_pred <- predict(model_25, newdata = box_data)
 
 # Simulate variability for boxplot
 set.seed(123)
@@ -1001,7 +1364,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC1_pred, fill = provenance)) 
     x = "Provenance",
     y = "Predicted PC1"
   ) +
-  ylim(-.5, .5) +  # Set y-axis range here
+  ylim(-1, 1) +  # Set y-axis range here
   theme_minimal()
 
 
@@ -1023,60 +1386,131 @@ plot(woody$ave_tmean, woody$PC2)
 plot(woody$ave_precip, woody$PC2)
 
 
-#PC2 models with other variables
-mha = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance, data = woody, phy) # no interaction
-summary(mha)
+model_list <- list()
 
-#best model
-mhb = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = woody, phy) # no interaction
-summary(mhb)
+model_1 <- phylolm(PC2 ~ provenance, data = woody, phy = phy)
+model_list[['model_1']] <- model_1
 
-vif(lm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_tmean^2)+I(ave_precip^2) , data = woody),type = 'predictor') # no interaction
-summary(mhb)
+model_2 <- phylolm(PC2 ~ provenance + ave_tmean, data = woody, phy = phy)
+model_list[['model_2']] <- model_2
 
+model_3 <- phylolm(PC2 ~ provenance + ave_precip, data = woody, phy = phy)
+model_list[['model_3']] <- model_3
 
-mhd = phylolm(PC2 ~ ave_tmean*provenance + ave_precip*provenance+I(ave_precip^2) , data = woody, phy) # no interaction
-summary(mhd)
+model_4 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip, data = woody, phy = phy)
+model_list[['model_4']] <- model_4
 
-mhc = phylolm(PC2 ~ ave_tmean + ave_precip + provenance+I(ave_tmean^2)+I(ave_precip^2), data = woody, phy) # no interaction
-summary(mhc) 
+model_5 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance, data = woody, phy = phy)
+model_list[['model_5']] <- model_5
 
+model_6 <- phylolm(PC2 ~ provenance + ave_tmean + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_6']] <- model_6
 
-# Calculate AIC for each model
-aicha <- AIC(mha)
-aichb <- AIC(mhb)#lowes AIC
-aichc <- AIC(mhc)
-aichd <- AIC(mhd)
+model_7 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_7']] <- model_7
 
-# Compare AIC values
-aic_values <- data.frame(
-  Model = c("Model 1", "Model 2", "Model 3", "Model 4"),
-  AIC = c(aicha, aichb, aichc,aichd)
+model_8 <- phylolm(PC2 ~ provenance + ave_precip + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_8']] <- model_8
+
+model_9 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance, data = woody, phy = phy)
+model_list[['model_9']] <- model_9
+
+model_10 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_10']] <- model_10
+
+model_11 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_11']] <- model_11
+
+model_12 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_12']] <- model_12
+
+model_13 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_13']] <- model_13
+
+model_14 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_14']] <- model_14
+
+model_15 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance, data = woody, phy = phy)
+model_list[['model_15']] <- model_15
+
+model_16 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_16']] <- model_16
+
+model_17 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_17']] <- model_17
+
+model_18 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_18']] <- model_18
+
+model_19 <- phylolm(PC2 ~ provenance + ave_tmean + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_19']] <- model_19
+
+model_20 <- phylolm(PC2 ~ provenance + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_20']] <- model_20
+
+model_21 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2), data = woody, phy = phy)
+model_list[['model_21']] <- model_21
+
+model_22 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_22']] <- model_22
+
+model_23 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_23']] <- model_23
+
+model_24 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_24']] <- model_24
+
+model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = woody, phy = phy)
+model_list[['model_25']] <- model_25
+
+# Initialize a data frame to store results
+model_metrics <- data.frame(
+  model = names(model_list),
+  R2 = NA,
+  AIC = NA,
+  delta_AIC = NA,
+  stringsAsFactors = FALSE
 )
 
-# Order by AIC
-aic_values <- aic_values[order(aic_values$AIC), ]
+# Loop through models to extract R² and AIC
+for (i in seq_along(model_list)) {
+  mod <- model_list[[i]]
+  model_metrics$R2[i] <- summary(mod)$r.squared
+  model_metrics$AIC[i] <- AIC(mod)
+}
 
 # Calculate delta AIC
-aic_values$Delta_AIC <- aic_values$AIC - min(aic_values$AIC)
-aic_values
+model_metrics$delta_AIC <- model_metrics$AIC - min(model_metrics$AIC)
 
+# Rank by AIC
+model_metrics <- model_metrics[order(model_metrics$AIC), ]
+
+# Print the ranked table
+print(model_metrics)
+
+
+
+# Filter models with delta AIC <= 2 (ensuring result is a data frame)
+top_models <- model_metrics[model_metrics$delta_AIC <= 2, ]
+
+# Pull summaries for these models
+top_summaries <- lapply(top_models$model, function(name) {
+  mod <- model_list[[name]]
+  summary(mod)
+})
+
+# Name the list for clarity
+names(top_summaries) <- top_models$model
+
+# View summaries
+top_summaries
+
+summary(model_25)
 
 # Q-Q plot for phylolm model
-qqnorm(residuals(mhb), main = "Q-Q Plot: phylolm")
-qqline(residuals(mhb), col = "red")
+qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
+qqline(residuals(model_25), col = "red")
 
-
-#plot residuals by hand
-residuals <- residuals(mhb)
-predicted<-predict(mhb,newdata = woody)
-
-# Plot residuals
-plot(predicted,residuals, main = "Residuals of lm Model", xlab = "Index", ylab = "Residuals")
-abline(h = 0, col = "red")
-
-qqnorm(residuals, main = "QQ Plot of Residuals for lm Model")
-qqline(residuals, col = "red")
 
 
 ##plot interactions
@@ -1098,7 +1532,7 @@ pred_tmean <- expand.grid(
     `I(ave_precip^2)` = mean_precip^2
   )
 
-pred_tmean$PC2_pred <- predict(mhb, newdata = pred_tmean)
+pred_tmean$PC2_pred <- predict(model_25, newdata = pred_tmean)
 
 ggplot(pred_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -1108,7 +1542,7 @@ ggplot(pred_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
     x = "Average Temperature",
     y = "Predicted PC2"
   ) +
-  ylim(-1, 1) +
+  ylim(-3, 3) +
   theme_minimal()
 
 # 2. Prediction over ave_precip
@@ -1123,7 +1557,7 @@ pred_precip <- expand.grid(
     `I(ave_precip^2)` = ave_precip^2
   )
 
-pred_precip$PC2_pred <- predict(mhb, newdata = pred_precip)
+pred_precip$PC2_pred <- predict(model_25, newdata = pred_precip)
 
 ggplot(pred_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
   geom_line(size = 1.2) +
@@ -1131,8 +1565,8 @@ ggplot(pred_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
   labs(
     title = "Predicted PC2 vs Precipitation -Woody",
     x = "Average Precipitation",
-    y = "Predicted PC2"
-  ) +
+    y = "Predicted PC2") +
+  ylim(-3, 3) +
   theme_minimal()
 
 # 3. Boxplot of predicted PC2 by provenance
@@ -1142,15 +1576,14 @@ ggplot(pred_precip, aes(x = ave_precip, y = PC2_pred, color = provenance)) +
 box_data <- expand.grid(
   ave_tmean = mean_tmean,
   ave_precip = mean_precip,
-  provenance = c("native", "non_native")
-) %>%
+  provenance = c("native", "non_native")) %>%
   mutate(
     `I(ave_tmean^2)` = ave_tmean^2,
     `I(ave_precip^2)` = ave_precip^2
   )
 
 # Predict PC2
-box_data$PC2_pred <- predict(mhb, newdata = box_data)
+box_data$PC2_pred <- predict(model_25, newdata = box_data)
 
 # Simulate variability for boxplot
 set.seed(123)
@@ -1166,7 +1599,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC2_pred, fill = provenance)) 
     x = "Provenance",
     y = "Predicted PC2"
   ) +
-  #ylim(-.5, .5) +  # Set y-axis range here
+  ylim(-1, 1) +  # Set y-axis range here
   theme_minimal()
 
 
@@ -1175,7 +1608,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC2_pred, fill = provenance)) 
 ggplot() +
   # Raw data points
   geom_point(data = woody, aes(x = ave_tmean, y = PC2, color = provenance),
-             alpha = 0.4, size = 1.5) +
+             alpha = 0.2, size = 1.5) +
   
   # Predicted lines
   geom_line(data = pred_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance),
