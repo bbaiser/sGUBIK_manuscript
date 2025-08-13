@@ -6,7 +6,7 @@ library(dplyr)
 
 
 # Extract and clean summary
-summary_phylo <- summary(model_17)
+summary_phylo <- summary(model_25)
 
 
 coef_df <- as.data.frame(summary_phylo$coefficients) %>%
@@ -36,4 +36,4 @@ doc <- read_docx() %>%
   body_add_par("Phylogenetic Linear Model Summary", style = "heading 1") %>%
   body_add_flextable(ft)
 
-print(doc, target = "phylolm_summary.docx")
+print(doc, target = "phylolm_summary_pc2_woody.docx")
