@@ -63,5 +63,5 @@ ft <- ft %>%
 doc <- read_docx() %>%
   body_add_flextable(ft)
 
-print(doc, target = "phylolm_summary_PC1_Woody.docx")
+print(doc, target = "Outputs/phylolm_summary_PC2_WOODY.docx")
 
