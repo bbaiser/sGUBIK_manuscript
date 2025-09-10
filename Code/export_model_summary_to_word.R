@@ -5,7 +5,7 @@ library(officer)
 library(purrr)  # for map_chr
 
 # Get model summary
-summary_phylo <- summary(model_25)
+summary_phylo <- summary(model_pc2_woody)
 
 # Rename terms
 term_labels <- c(
@@ -63,5 +63,5 @@ ft <- ft %>%
 doc <- read_docx() %>%
   body_add_flextable(ft)
 
-print(doc, target = "Outputs/phylolm_summary_PC2_WOODY.docx")
+print(doc, target = "Outputs/phylolm_summary_PC2_wood.docx")
 
