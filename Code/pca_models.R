@@ -19,7 +19,7 @@ phy = read.tree("Data/phy.tre")#phylogeny for species in the PCA data set
 
 
 
-####PC1-All taxa####
+####PC1-All taxa (not in maniscript)#### 
 
 #make data frame 
 d_pca = as.data.frame(d_pca_filtered)
@@ -57,15 +57,12 @@ plot(d_pca$ave_precip, d_pca$PC2)
 model_25 <- phylolm(PC1 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
 summary(model_25)
 
-r<-model_25$n-model_25$p
+
+#chi square test comparing native/non-native across woddy/herbaceous
 
 t<-table(d_pca_raw$growth_form, d_pca_raw$provenance)
-
-
-sum(t)
 chisq.test(t,correct= F )
-chi
-model_25$
+
 
 #Variance inflation (using lm)
 vif(lm(PC1 ~ provenance + ave_tmean + ave_precip + ave_precip:provenance + I(ave_precip^2)+I(ave_tmean^2), data = d_pca), type="predictor")
@@ -169,7 +166,7 @@ ggplot(box_data_expanded, aes(x = provenance, y = PC1_pred, fill = provenance)) 
            y = "Predicted PC1") +
       theme_minimal()
 
-####PC2- All taxa####
+####PC2- All taxa (not in manuscript)####
 #phylm
 phym2 = phylolm(PC2 ~ provenance, data = d_pca, phy)
 summary(phym2)
@@ -185,7 +182,6 @@ qqline(residuals(phym2), col = "red")
 
 
 #Full model (no model selection)
-
 model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = d_pca, phy = phy)
 
 summary(model_25)
@@ -200,7 +196,7 @@ simulationOutput <- simulateResiduals(fittedModel = model_25, plot = F)
 plot(simulationOutput)
 testDispersion(simulationOutput)
 
-##plot interactions
+##Plots
 
 # Means for holding other variables constant
 mean_tmean <- round(mean(d_pca$ave_tmean, na.rm = TRUE),2)
@@ -221,17 +217,17 @@ new_tmean <- expand.grid(ave_tmean = tmean_seq,
 new_tmean$PC2_pred <- predict(model_25, newdata = new_tmean)
 
 ggplot(new_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
-      geom_line(size = 1.2) +
-      geom_rug(data = d_pca, aes(x = ave_tmean), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
-      #geom_point(data = d_pca, aes(x = ave_precip, y = PC1, color = provenance),alpha = 0.4, size = 1.5)+
-      scale_color_manual(values = custom_colors) +
-      labs(
-        title = "Predicted PC2 vs Temperature - All Taxa",
-        x = "Average Temperature",
-        y = "Predicted PC2"
-      ) +
-      coord_cartesian(ylim = c(-3, 3)) +
-      theme_minimal()
+            geom_line(size = 1.2) +
+            geom_rug(data = d_pca, aes(x = ave_tmean), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
+            #geom_point(data = d_pca, aes(x = ave_precip, y = PC1, color = provenance),alpha = 0.4, size = 1.5)+
+            scale_color_manual(values = custom_colors) +
+            labs(
+              title = "Predicted PC2 vs Temperature - All Taxa",
+              x = "Average Temperature",
+              y = "Predicted PC2"
+            ) +
+            coord_cartesian(ylim = c(-3, 3)) +
+            theme_minimal()
 
 # 2. Effect of ave_precip (with quadratic term)
 precip_seq <- seq(min(d_pca$ave_precip), max(d_pca$ave_precip), length.out = 100)
@@ -316,7 +312,7 @@ qqnorm(residuals(model_25), main = "Q-Q Plot: phylolm")
 qqline(residuals(model_25), col = "red")
 
 
-##plot interactions
+##plots
 # Set up means
 mean_tmean <- round(mean(herb$ave_tmean, na.rm = TRUE),2)
 mean_precip <- round(mean(herb$ave_precip, na.rm = TRUE),2)
@@ -331,18 +327,31 @@ pred_tmean <- expand.grid(ave_tmean = tmean_seq,
                     `I(ave_tmean^2)` = ave_tmean^2,
                     `I(ave_precip^2)` = mean_precip^2)
 
-pred_tmean$PC1_pred <- predict(model_25, newdata = pred_tmean)
+#pred_tmean$PC1_pred <- predict(model_25, newdata = pred_tmean)
 
-ggplot(pred_tmean, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
-       geom_line(size = 1.2) +
-       geom_rug(data = herb, aes(x = ave_tmean), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
-       #geom_point(data = herb, aes(x = ave_precip, y = PC1, color = provenance),alpha = 0.4, size = 1.5)+
-       scale_color_manual(values = custom_colors) +
-       labs(title = "Predicted PC1 vs Temperature - Herbs",
-            x = "Average Temperature",
-            y = "Predicted PC1") +
-       coord_cartesian(ylim = c(-3, 3)) +
-       theme_minimal()
+preds <- predict(model_25, newdata = pred_tmean,boot=TRUE, nboot=1000)
+pred_tmean$PC1_pred <- as.vector(preds$fit)
+pred_tmean$PC1_se <- preds$se.fit[1:200]
+
+
+# 3. Calculate 95% confidence intervals
+pred_tmean2 <- pred_tmean %>%
+  mutate(
+    lower = PC1_pred - 1.96 * PC1_se,
+    upper = PC1_pred + 1.96 * PC1_se
+  )
+
+H_PC1_temp<-ggplot(pred_tmean2, aes(x = ave_tmean, y = PC1_pred, color = provenance)) +
+           geom_line(size = 1.2) +
+           #geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+           geom_rug(data = herb, aes(x = ave_tmean), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
+           #geom_point(data = herb, aes(x = ave_precip, y = PC1, color = provenance),alpha = 0.4, size = 1.5)+
+           scale_color_manual(values = custom_colors) +
+           labs(title = "Predicted PC1 vs Temperature - Herbs",
+                x = "Average Temperature",
+                y = "Predicted PC1") +
+           coord_cartesian(ylim = c(-3, 3)) +
+           theme_minimal()
 
 # 2. Prediction over ave_precip (with squared term + interaction)
 precip_seq <-seq(min(herb$ave_precip), max(herb$ave_precip), length.out = 100)
@@ -353,10 +362,27 @@ pred_precip <- expand.grid(ave_precip = precip_seq,
                      `I(ave_tmean^2)` = mean_tmean^2,
                      `I(ave_precip^2)` = ave_precip^2)
 
-pred_precip$PC1_pred <- predict(model_25, newdata = pred_precip)
+#pred_precip$PC1_pred <- predict(model_25, newdata = pred_precip)
 
-ggplot(pred_precip, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
+
+
+
+preds <- predict(model_25, newdata = pred_precip, se.fit = TRUE)
+pred_precip$PC1_pred <- as.vector(preds$fit)
+pred_precip$PC1_se <- preds$se.fit[1:200]
+
+
+# 3. Calculate 95% confidence intervals
+pred_precip2 <- pred_precip %>%
+  mutate(
+    lower = PC1_pred - 1.96 * PC1_se,
+    upper = PC1_pred + 1.96 * PC1_se
+  )
+
+
+ggplot(pred_precip2, aes(x = ave_precip, y = PC1_pred, color = provenance)) +
        geom_line(size = 1.2) +
+       #geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
        geom_rug(data = herb, aes(x = ave_precip), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
        geom_point(data = herb, aes(x = ave_precip, y = PC1, color = provenance),alpha = 0.4, size = 1.5)+
        scale_color_manual(values = custom_colors) +
@@ -402,13 +428,13 @@ summary(phymh2) # still significantly different after considering phylogenetic r
 
 #Full model(no model selection)
 
-model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy)
+model_25 <- phylolm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb, phy = phy, model="lambda")
 
 summary(model_25)
 
 #VIF with lm
 vif(lm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb),type= 'predictor')
-summary(lm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb),type= 'predictor')
+model_25<-lm(PC2 ~ provenance + ave_tmean + ave_precip + ave_tmean:provenance + ave_precip:provenance + I(ave_tmean^2) + I(ave_precip^2), data = herb)
 
 
 # Q-Q plot for phylolm model
@@ -428,21 +454,39 @@ tmean_seq <-seq(min(herb$ave_tmean), max(herb$ave_tmean), length.out = 100)
 
 pred_tmean <- expand.grid(ave_tmean = tmean_seq,
                           provenance = c("native", "non_native")) %>%
-              mutate(ave_precip = mean_precip,
+                mutate(ave_precip = mean_precip,
                     `I(ave_tmean^2)` = ave_tmean^2,
                     `I(ave_precip^2)` = mean_precip^2)
 
-pred_tmean$PC2_pred <- predict(model_25, newdata = pred_tmean)
+#pred_tmean$PC2_pred <- predict(model_25, newdata = pred_tmean)
 
-ggplot(pred_tmean, aes(x = ave_tmean, y = PC2_pred, color = provenance)) +
+
+#pred_precip <- expand.grid(provenance = c("native", "non_native"),ave_precip = precip_seq) 
+
+
+preds <- predict(model_25, newdata = pred_tmean, interval = "confidence")
+
+
+pred_tmean$PC2_pred <- as.vector(preds$fit)
+pred_tmean$PC2_se <- preds_list$se.fit[1:200]
+plot(pred_tmean$PC2_pred , pred_tmean$PC2_se)
+pred_tmean2 <- pred_tmean %>%
+                mutate(
+                  lower = PC2_pred - 1.96 * PC2_se,
+                  upper = PC2_pred + 1.96 * PC2_se
+                )
+
+
+ggplot(pred_df, aes(x = ave_tmean, y = fit, color = provenance)) +
        geom_line(size = 1.2) +
        geom_rug(data = herb, aes(x = ave_tmean), inherit.aes = FALSE, sides = "b", alpha = 0.3)+
+       geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA)+
        #geom_point(data = herb, aes(x = ave_tmean, y = PC2, color = provenance),alpha = 0.4, size = 1.5)+
        scale_color_manual(values = custom_colors) +
        labs(title = "Predicted PC2 vs Temperature - Herbs",
             x = "Average Temperature",
             y = "Predicted PC2") +
-       coord_cartesian(ylim = c(-6, 3)) +
+       coord_cartesian(ylim = c(-5, 5)) +
        theme_minimal()
 
 # 2. Prediction over ave_precip (with squared term + interaction)
