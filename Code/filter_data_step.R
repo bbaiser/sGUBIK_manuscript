@@ -1,11 +1,12 @@
 #Filter climate outliers >3 sd 
 
-#load adata
-#Species PCA Sscores and climate data matrix
-d_pca_raw <- read_csv("Data/d_pca.csv") #pca scores for native and non-native urban plant species
+#load data
+#Species PCA scores and climate data matrix
+d_pca_raw <- read.csv("Data/d_pca.csv") #pca scores for native and non-native urban plant species
 
 ####All Taxa ####
 d_pca<-d_pca_raw
+
 # scale variables temp and precip
 d_pca$ave_tmean = scale(d_pca$ave_tmean)[,1]
 d_pca$ave_precip = scale(d_pca$ave_precip)[,1]
