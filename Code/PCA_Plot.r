@@ -60,6 +60,22 @@ PCAvalues$PC2 <- (PCAvalues$PC2*-1)
 PCAloadings$PC2 <- (PCAloadings$PC2*-1)
 
 
+####Test distributions of pc scores for native and non-native species on the first two axes####
+
+# extract pca values for the first 2 axes for native and non-native
+nm_native <- filter(PCAvalues, provenance == "native") %>% 
+             select(PC1,PC2)
+
+nm_non_native <- filter(PCAvalues, provenance == "non-native")%>% 
+                 select(PC1,PC2)
+
+
+#KS-TEST
+ks.test(nm_non_native$PC1, nm_native$PC1)#D = 0.28431, p-value < 2.2e-16
+
+ks.test(nm_non_native$PC2, nm_native$PC2)#D = 0.07241, p-value = 0.001548
+
+
 ###plot pca and pca score distributions
 
 #set themes
@@ -135,6 +151,7 @@ Fig_1<-dens_PCA %>%
       ggdraw()
 
 Fig_1
+
 
 #export pca scores
 pca_scores<-PCAvalues%>%
