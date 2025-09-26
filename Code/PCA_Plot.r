@@ -24,9 +24,9 @@ library(kSamples)
 
 #Load data sets 
 
-#Data from Diaz et al. 2022 and GBIF/Gubic for urban for species that have all 6 diaz traits. taxonomically matched to WCVP 
+#Data from Diaz et al. 2022 and GBIF/Gubic for urban  species that have all 6 diaz traits. Taxonomically matched to WCVP 
 Diaz_Final <- read.csv("Data/Diaz_Gubic_final_tot2.csv",row=1) %>%
-              rename("Leaf area"="Leaf_area","Leaf N"="Leaf_N",
+              dplyr::rename("Leaf area"="Leaf_area","Leaf N"="Leaf_N",
                      "Seed mass"="Seed_mass","Stem density"="Stem_density" )%>%
               mutate(provenance_glonaf = replace(provenance_glonaf, str_detect(provenance_glonaf, "non_native"), "non-native"))
 
@@ -135,3 +135,11 @@ Fig_1<-dens_PCA %>%
       ggdraw()
 
 Fig_1
+
+#export pca scores
+pca_scores<-PCAvalues%>%
+            mutate(growth_form = case_when(
+            growth_form == "herb" ~ "herb",
+            growth_form %in% c("shrub", "tree") ~ "woody"))
+
+write.csv(pca_scores, "Data/Trait_pca_scores.csv")
