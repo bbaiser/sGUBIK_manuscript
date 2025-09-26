@@ -1,9 +1,9 @@
+#Phylogenetic Linear Models and Plots
+
 #install packages
-install.packages("phylolm.hp")
 library(phylolm.hp)
 library(tidyverse)
 library(ape)
-#install.packages("DHARMa")
 library(DHARMa)
 library(phylolm)
 library(car)
@@ -12,18 +12,21 @@ library(rr2)
 library(patchwork)
 
 ####data####
-d_pca = read_csv("Data/d_pca.csv") #pca scores for native and non-native urban plant species
+#pca scores for native and non-native urban plant species including climate data
+d_pca = read_csv("Data/d_pca.csv") 
 
-phy = read.tree("Data/phy.tre") #phylogeny for species in the PCA data set
-#plot(phy, type = "fan", show.tip.label = F)
+#phylogeny for species in the PCA data set
+phy = read.tree("Data/phy.tre") 
 
+#Plot Phylogeny
+plot(phy, type = "fan", show.tip.label = F)
 
 
 ####PC1-All taxa (not in manuscript)#### 
 
 #make data frame 
-d_pca = as.data.frame(d_pca)
-row.names(d_pca) = d_pca$tip
+d_pca <- as.data.frame(d_pca)
+row.names(d_pca) <- d_pca$tip
 
 #scale 
 d_pca$ave_tmean<-scale(d_pca$ave_tmean)[,1]
