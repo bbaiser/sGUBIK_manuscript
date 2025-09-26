@@ -193,6 +193,7 @@ H_PC2_precip<-ggplot(pred_precip, aes(x = ave_precip, y = PC2_pred, color = prov
 #filter for woody species
 woody<-d_pca%>%
        filter(growth_form=="woody")
+
 woody <-as.data.frame(woody)
 row.names(woody) = woody$tip
 
@@ -423,7 +424,7 @@ p5_labeled <- p5 + labs(title = "c) Woody") +
 p6_labeled <- p6 + labs(title = "d) Woody") +
   theme(plot.title = element_text(hjust = 0))
 
-# Combine manually labeled plots WITHOUT automatic tags
+# Combine  plots 
 combined <- (p1_labeled + p2_labeled) / (p5_labeled + p6_labeled)
 
 
