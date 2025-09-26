@@ -18,14 +18,14 @@ library(tidyverse)
 
 
 
-#Load and clean Diaz data from Diaz et al. 2022 with WCVP taxonomy
+#Load and clean data from Diaz et al. 2022 with added WCVP taxonomy
 Diaz_WCVP <- read.csv("Data/Diaz_WCVP.csv")
 
 #add a data source column
 Diaz_WCVP$source <- 'Diaz'
 Diaz_WCVP$dupes = duplicated(Diaz_WCVP$sp_WCVP_binomial)#look for duplicates
 
-#create Diaz data frame log continuous traits)
+#create Diaz data frame (log continuous traits)
 Diaz_WCVP_clean <- data.frame(
                   Species_WCVP  = Diaz_WCVP$sp_WCVP_binomial,
                   Leaf_area     = log10(Diaz_WCVP$Leaf.Area..mm2.),
@@ -41,18 +41,18 @@ Diaz_WCVP_clean <- data.frame(
                   select(!duplicates)
 
 
-# urban species occurences extracted from gbif and gubic data bases(n = 694,661)
+# urban species occurences extracted from gbif and gubic data bases(n = 694,661) an look at provenance
 gubic_urban_sp<-readRDS("Data/gbif_gubic_list_per_city_final2_20241015.RDS")%>%
                 mutate(status_glonaf = replace_na(status_glonaf, "native"))%>%
-                mutate(provenance_glonaf= recode(status_glonaf, 'naturalized' = 'non_native', 
+                mutate(provenance_glonaf= dplyr::recode(status_glonaf, 'naturalized' = 'non_native', 
                                                  'invasive' = 'non_native', "native"="native",
                                                  "invasive, naturalized"= "non_native"))%>%
                 mutate(status_gbif = replace_na(status_gbif, "native"))%>%
-                mutate(provenance_gbif= recode(status_gbif, 'naturalized' = 'non_native', 
+                mutate(provenance_gbif= dplyr::recode(status_gbif, 'naturalized' = 'non_native', 
                                                'invasive' = 'non_native', "native"="native",
                                                "invasive, naturalized"= "non_native"))%>%
                 mutate(status_glonaf_gbif = replace_na(status_glonaf_gbif, "native"))%>%
-                mutate(provenance_glonaf_gbif= recode(status_glonaf_gbif, 'naturalized' = 'non_native', 
+                mutate(provenance_glonaf_gbif= dplyr::recode(status_glonaf_gbif, 'naturalized' = 'non_native', 
                                                       'invasive' = 'non_native', "native"="native",
                                                       "invasive, naturalized"= "non_native"))%>%
                 filter(n_records_urban> 0)%>%
@@ -65,7 +65,7 @@ gubic_urban_sp<-readRDS("Data/gbif_gubic_list_per_city_final2_20241015.RDS")%>%
 test<-gubic_urban_sp%>%
       filter(accepted_taxon_name_binomial== "Erigeron canadensis")             
 
-#these are taxa that either are only native or only non-native in cities (gbiff/gubic data)
+#these are taxa that either are only native or only non-native in cities (gbif/gubic data)
 provenance_list_distinct<-gubic_urban_sp%>%
                           group_by((accepted_taxon_name_binomial))%>% 
                           mutate(same = +(n_distinct(provenance_glonaf) == 1)) %>% 
@@ -93,7 +93,7 @@ prov_counts<-gubic_urban_sp%>%
             mutate(diff = non_native-native)
 
 
-#make non_native lists 
+#make non_native list 
 non_native_total<-as.data.frame(prov_counts)%>% 
                   filter(non_native>0) %>% 
                   select(accepted_taxon_name_binomial)
@@ -115,12 +115,12 @@ global_traits <- data.frame(
                   Height        = log10(global$plant_height_m),
                   source        = global$source,
                   growth_form   = global$woodiness)%>%
-                  mutate(growth_form= recode(growth_form, 'woody' = 'tree', 'non-woody' = 'herb'))
+                  mutate(growth_form= dplyr::recode(growth_form, 'woody' = 'tree', 'non-woody' = 'herb'))
 
 
 ####compare data sets and find shared and unique species
 
-#species with all 6 traits unique to global traits (global traits adds 1025 species with all 6 traits)
+#species with all 6 traits unique to global traits (global traits adds 1025 species with all 6 traits i.e., species not in Diaz)
 unique_global<-as.data.frame(setdiff(global_traits$Species_WCVP,Diaz_WCVP_clean$Species_WCV))
 colnames(unique_global)<-"Species_WCVP"
 
@@ -137,7 +137,7 @@ global_urban_unique<-global_new%>%
 Diaz_urban<-Diaz_WCVP_clean%>%
             filter((Diaz_WCVP_clean$Species_WCVP)%in% gubic_urban_sp$accepted_taxon_name_binomial) 
 
-#join urban diaz and global species from trait databases(n=2777 species)
+#join urban diaz and global species from urban trait database(n=2777 species)
 Diaz_Gubic<-bind_rows(Diaz_urban,global_urban_unique)
 
 
@@ -152,7 +152,7 @@ Diaz_Gubic_non_native<-non_native_total%>%
 
 
 Diaz_Gubic_prov<-bind_rows(Diaz_Gubic_native,Diaz_Gubic_non_native) %>% 
-                rename(Species_WCVP= accepted_taxon_name_binomial)
+                dplyr::rename(Species_WCVP= accepted_taxon_name_binomial)
 
 #there are 2777 urban species in the combined diaz and gbif/gubic data (809 additional species from gbiff/gubic)
 Diaz_Gubic_final_tot<-Diaz_Gubic %>% 
